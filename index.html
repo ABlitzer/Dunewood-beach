@@ -217,6 +217,25 @@ async function fetchOpenMeteo(now) {
   };
 }
 
+async function fetchBuoy() {
+  const target = encodeURIComponent(`https://www.ndbc.noaa.gov/data/realtime2/${BUOY_ID}.txt`);
+  const proxies = [
+    `https://corsproxy.io/?url=${target}`,
+    `https://api.allorigins.win/raw?url=${target}`,
+    `https://proxy.cors.sh/https://www.ndbc.noaa.gov/data/realtime2/${BUOY_ID}.txt`,
+  ];
+  for (const url of proxies) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const text = await res.text();
+        if (text.includes("WVHT") || text.includes("WSPD")) return text;
+      }
+    } catch(e) { /* try next */ }
+  }
+  throw new Error("All buoy proxies failed");
+}
+
 async function fetchAll() {
   const app = document.getElementById("app");
   const now  = new Date();
@@ -224,7 +243,7 @@ async function fetchAll() {
   try {
     // Run all fetches in parallel; NWS and Open-Meteo race with fallback
     const [buoyResult, wxResult, tideResult] = await Promise.allSettled([
-      fetch(`https://corsproxy.io/?url=https://www.ndbc.noaa.gov/data/realtime2/${BUOY_ID}.txt`).then(r=>r.text()),
+      fetchBuoy(),
       fetchNWS(now).catch(() => fetchOpenMeteo(now)),
       (async () => {
         const end = new Date(now.getTime()+24*3600*1000);
