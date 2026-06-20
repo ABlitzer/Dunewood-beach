@@ -23,6 +23,383 @@
     gap: 10px;
   }
   .loc-name {
+    font-size: 20px; font-weight: 900; letter-spacing: 4px;
+    color: #f0f9ff; display: flex; align-items: center; gap: 10px;
+  }
+  .loc-dot {
+    width: 8px; height: 8px; background: #38bdf8;
+    border-radius: 50%; display: inline-block; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .loc-sub { font-size: 10px; letter-spacing: 3px; color: #7dd3fc; opacity: 0.7; margin-top: 3px; }
+  .updated { font-size: 10px; color: #7dd3fc; opacity: 0.4; letter-spacing: 1px; text-align: right; }
+  .refresh-btn {
+    margin-top: 6px; background: none;
+    border: 1px solid rgba(125,211,252,0.25); color: #38bdf8;
+    font-family: 'Courier New', Courier, monospace; font-size: 9px;
+    letter-spacing: 2px; padding: 4px 10px; border-radius: 3px; cursor: pointer; display: block;
+  }
+  .refresh-btn:hover { background: rgba(56,189,248,0.1); }
+  .advisory {
+    background: rgba(251,191,36,0.1); border-left: 3px solid #fbbf24;
+    margin: 0 2px; padding: 10px 14px; font-size: 11px;
+    color: #fcd34d; letter-spacing: 1px; display: none;
+  }
+  .sec-lbl { font-size: 10px; letter-spacing: 5px; color: #38bdf8; font-weight: 700; padding: 22px 20px 10px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 0 2px; }
+  @media (max-width: 400px) { .grid { grid-template-columns: repeat(2,1fr); } }
+  .card {
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(125,211,252,0.1);
+    border-radius: 4px; padding: 16px 10px; text-align: center;
+  }
+  .card-tide {
+    grid-column: 1 / -1; background: rgba(56,189,248,0.07);
+    border: 1px solid rgba(56,189,248,0.25);
+  }
+  .card-icon { font-size: 22px; margin-bottom: 6px; }
+  .card-lbl { font-size: 9px; letter-spacing: 2px; color: #7dd3fc; margin-bottom: 6px; font-weight: 700; }
+  .card-main { font-size: 24px; font-weight: 900; color: #f0f9ff; line-height: 1; }
+  .card-tide .card-main { font-size: 36px; letter-spacing: -1px; }
+  .card-sub { font-size: 11px; color: #7dd3fc; margin-top: 4px; opacity: 0.75; }
+  .source-tag { font-size: 8px; color: #38bdf8; opacity: 0.45; letter-spacing: 1px; margin-top: 4px; }
+  .scroll { display: flex; overflow-x: auto; gap: 2px; padding: 0 2px 6px; scrollbar-width: none; }
+  .scroll::-webkit-scrollbar { display: none; }
+  .hcard {
+    flex: 0 0 76px; background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(125,211,252,0.1); border-radius: 4px;
+    padding: 14px 8px; text-align: center;
+  }
+  .h-time { font-size: 10px; letter-spacing: 1px; color: #7dd3fc; margin-bottom: 8px; font-weight: 700; }
+  .h-icon { font-size: 20px; margin-bottom: 6px; }
+  .h-precip { font-size: 17px; font-weight: 900; line-height: 1; }
+  .h-rlbl { font-size: 7px; letter-spacing: 2px; color: #7dd3fc; opacity: 0.6; margin-bottom: 6px; }
+  .h-wind { font-size: 14px; font-weight: 700; color: #e0f2fe; }
+  .h-unit { font-size: 8px; color: #7dd3fc; }
+  .h-dir { font-size: 9px; color: #7dd3fc; opacity: 0.7; margin-top: 2px; letter-spacing: 1px; }
+  .footer {
+    font-size: 9px; color: #7dd3fc; opacity: 0.3;
+    text-align: center; padding: 28px 20px 0; letter-spacing: 1px; line-height: 2;
+  }
+  .status { text-align: center; padding: 60px 20px; font-size: 13px; letter-spacing: 3px; color: #7dd3fc; }
+  .error { color: #f87171; letter-spacing: 1px; line-height: 2; }
+</style>
+</head>
+<body>
+<div id="app"><div class="status">LOADING CONDITIONS…</div></div>
+<script>
+const BUOY_ID      = "44025";
+const TIDE_STATION = "8531680";
+const LAT          = 40.6512;
+const LON          = -73.2154;
+
+const UV_LABELS = ["Low","Low","Low","Moderate","Moderate","Moderate","High","High","Very High","Very High","Extreme"];
+const UV_COLORS = ["#4ade80","#4ade80","#4ade80","#facc15","#facc15","#facc15","#f97316","#f97316","#ef4444","#ef4444","#9333ea"];
+
+function mToFt(m)      { return isNaN(m) ? "--" : (m*3.281).toFixed(1); }
+function knotsToMph(k) { return (isNaN(k)||k===null) ? "--" : Math.round(k*1.15078); }
+function mpsToMph(v)   { return isNaN(v) ? "--" : Math.round(v*2.237); }
+function degDir(d)     { if(!d&&d!==0) return "--"; return ["N","NE","E","SE","S","SW","W","NW"][Math.round(d/45)%8]; }
+function cToF(c)       { return isNaN(c) ? "--" : Math.round(c*9/5+32)+"°F"; }
+function fmtDate(d)    { return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`; }
+function cloudIcon(p)  { return p<20?"☀️":p<50?"⛅":p<80?"🌥️":"☁️"; }
+function precipColor(p){ return p<20?"#4ade80":p<50?"#facc15":p<70?"#f97316":"#ef4444"; }
+function cloudLabel(p) { return p<10?"clear":p<30?"mostly clear":p<60?"partly cloudy":p<85?"mostly cloudy":"overcast"; }
+
+function toAMPM(str) {
+  const d=new Date(str.replace(" ","T"));
+  let h=d.getHours(),m=d.getMinutes(),ap=h>=12?"PM":"AM";
+  h=h%12||12; return `${h}:${String(m).padStart(2,"0")} ${ap}`;
+}
+function hrLabel(str) {
+  const d=new Date(str); let h=d.getHours(),ap=h>=12?"PM":"AM";
+  h=h%12||12; return `${h}${ap}`;
+}
+function nowStr() {
+  const d=new Date(); let h=d.getHours(),m=d.getMinutes(),ap=h>=12?"PM":"AM";
+  h=h%12||12; return `${h}:${String(m).padStart(2,"0")} ${ap}`;
+}
+function estimateUV(now, cloudPct) {
+  const h=now.getHours();
+  if(h<7||h>19) return 0;
+  const raw=Math.round(10*Math.sin(Math.PI*(h-7)/13));
+  return Math.max(0,Math.round(raw*(1-(cloudPct/100)*0.75)));
+}
+function cloudFromText(text) {
+  const t=(text||"").toLowerCase();
+  if(t.includes("clear")||t.includes("sunny")) return 5;
+  if(t.includes("mostly sunny")||t.includes("mostly clear")) return 20;
+  if(t.includes("partly")) return 45;
+  if(t.includes("mostly cloudy")) return 75;
+  if(t.includes("cloudy")||t.includes("overcast")) return 90;
+  return 40;
+}
+
+function parseBuoy(text) {
+  const lines=text.trim().split("\n").filter(l=>!l.startsWith("#")&&l.trim());
+  if(lines.length<2) return {};
+  const headers=lines[0].trim().split(/\s+/);
+  const dataLine=lines[1].trim().startsWith("#")?lines[2]:lines[1];
+  if(!dataLine) return {};
+  const vals=dataLine.trim().split(/\s+/);
+  const get=key=>{ const i=headers.indexOf(key); return(i>=0&&vals[i]!=="MM")?parseFloat(vals[i]):NaN; };
+  return {
+    waveHt:   get("WVHT"),
+    wavePer:  get("DPD"),
+    waveDir:  get("MWD"),
+    waterTemp:get("WTMP"),
+  };
+}
+
+async function fetchNWS(now) {
+  // NWS requires a descriptive User-Agent — without it requests are rejected
+  const headers = { "User-Agent": "DunewoodBeachDashboard/1.0 (github.com/ABlitzer/Dunewood-beach)" };
+  const gridRes = await fetch("https://api.weather.gov/points/40.6512,-73.2154", { headers });
+  if (!gridRes.ok) throw new Error("NWS points failed");
+  const gridData = await gridRes.json();
+  const hourlyUrl = gridData.properties.forecastHourly;
+  const hourlyRes = await fetch(hourlyUrl, { headers });
+  if (!hourlyRes.ok) throw new Error("NWS hourly failed");
+  const hourlyData = await hourlyRes.json();
+  const periods = hourlyData.properties.periods;
+  const current = periods.find(p => new Date(p.startTime) <= now && new Date(p.endTime) > now) || periods[0];
+  const future  = periods.filter(p => new Date(p.startTime) >= now).slice(0, 9);
+
+  const windKts    = parseInt(current.windSpeed) || 0;
+  const cloudPct   = current.skyCover?.value ?? cloudFromText(current.shortForecast);
+  const precipPct  = current.probabilityOfPrecipitation?.value ?? 0;
+  const visMiles   = current.visibility?.value != null ? Math.round(current.visibility.value * 0.000621371) : null;
+  const gustMatch  = current.shortForecast?.match(/gusts? (?:up to |as high as )?(\d+) mph/i);
+
+  return {
+    source:    "NWS",
+    windMph:   knotsToMph(windKts),
+    windDir:   current.windDirection || "--",
+    gustMph:   gustMatch ? gustMatch[1] : null,
+    cloudPct,
+    precipPct,
+    visMiles:  visMiles ?? "--",
+    future,
+  };
+}
+
+async function fetchOpenMeteo(now) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=precipitation_probability,cloud_cover,wind_speed_10m,wind_direction_10m,visibility&hourly=precipitation_probability,wind_speed_10m,wind_direction_10m,cloud_cover&timezone=America%2FNew_York&forecast_days=1`;
+  const res  = await fetch(url);
+  if (!res.ok) throw new Error("Open-Meteo failed");
+  const data = await res.json();
+  const cur  = data.current;
+  const hourly = data.hourly;
+  const curHour = now.getHours();
+  const future = [];
+  for (let i=0; i<hourly.time.length; i++) {
+    if (new Date(hourly.time[i]).getHours() >= curHour && future.length < 9) {
+      future.push({
+        startTime:   hourly.time[i],
+        windSpeed:   mpsToMph(hourly.wind_speed_10m[i]) + " mph",
+        windDirection: degDir(hourly.wind_direction_10m[i]),
+        probabilityOfPrecipitation: { value: hourly.precipitation_probability[i] },
+        skyCover:    { value: hourly.cloud_cover[i] },
+        shortForecast: "",
+        _isMPS: true,
+        _windMph: mpsToMph(hourly.wind_speed_10m[i]),
+      });
+    }
+  }
+  return {
+    source:   "Open-Meteo",
+    windMph:  mpsToMph(cur.wind_speed_10m),
+    windDir:  degDir(cur.wind_direction_10m),
+    gustMph:  null,
+    cloudPct: cur.cloud_cover ?? 0,
+    precipPct:cur.precipitation_probability ?? 0,
+    visMiles: cur.visibility ? Math.round(cur.visibility/1000*0.621) : "--",
+    future,
+  };
+}
+
+async function fetchAll() {
+  const app = document.getElementById("app");
+  const now  = new Date();
+
+  try {
+    // Run all fetches in parallel; NWS and Open-Meteo race with fallback
+    const [buoyResult, wxResult, tideResult] = await Promise.allSettled([
+      fetch(`https://corsproxy.io/?url=https://www.ndbc.noaa.gov/data/realtime2/${BUOY_ID}.txt`).then(r=>r.text()),
+      fetchNWS(now).catch(() => fetchOpenMeteo(now)),
+      (async () => {
+        const end = new Date(now.getTime()+24*3600*1000);
+        const r = await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&application=web_services&begin_date=${fmtDate(now)}&end_date=${fmtDate(end)}&datum=MLLW&station=${TIDE_STATION}&time_zone=lst_ldt&interval=hilo&units=english&format=json`);
+        return r.json();
+      })()
+    ]);
+
+    // Buoy data
+    const buoy = buoyResult.status==="fulfilled" ? parseBuoy(buoyResult.value) : {};
+    const waveHtFt   = !isNaN(buoy.waveHt)    ? mToFt(buoy.waveHt)              : "--";
+    const wavePer    = !isNaN(buoy.wavePer)    ? `${Math.round(buoy.wavePer)}s`  : "--";
+    const waveDirStr = !isNaN(buoy.waveDir)    ? degDir(buoy.waveDir)            : "--";
+    const waterTempF = !isNaN(buoy.waterTemp)  ? cToF(buoy.waterTemp)            : "--";
+
+    // Weather (NWS preferred, Open-Meteo fallback)
+    const wx = wxResult.status==="fulfilled" ? wxResult.value : null;
+    if (!wx) throw new Error("All weather sources failed");
+
+    const windMph   = wx.windMph;
+    const windDir   = wx.windDir;
+    const gustMph   = wx.gustMph;
+    const cloudPct  = wx.cloudPct;
+    const precipPct = wx.precipPct;
+    const visMiles  = wx.visMiles;
+    const uv        = Math.min(estimateUV(now, cloudPct), 10);
+
+    // Tides
+    let tideTime="--", tideFt="--";
+    if (tideResult.status==="fulfilled") {
+      const tj = tideResult.value;
+      if (tj.predictions) {
+        const nextHigh = tj.predictions.filter(p=>p.type==="H").filter(p=>new Date(p.t.replace(" ","T"))>now)[0];
+        if (nextHigh) { tideTime=toAMPM(nextHigh.t); tideFt=parseFloat(nextHigh.v).toFixed(1); }
+      }
+    }
+
+    // Hourly strip
+    const hourCards = wx.future.map(p => {
+      const pCloud   = p.skyCover?.value ?? cloudFromText(p.shortForecast);
+      const pPrecip  = p.probabilityOfPrecipitation?.value ?? 0;
+      const pWindMph = p._isMPS ? p._windMph : knotsToMph(parseInt(p.windSpeed));
+      const pDir     = p.windDirection || "--";
+      return `
+        <div class="hcard">
+          <div class="h-time">${hrLabel(p.startTime)}</div>
+          <div class="h-icon">${cloudIcon(pCloud)}</div>
+          <div class="h-precip" style="color:${precipColor(pPrecip)}">${pPrecip}%</div>
+          <div class="h-rlbl">RAIN</div>
+          <div class="h-wind">${pWindMph}<span class="h-unit"> mph</span></div>
+          <div class="h-dir">${pDir}</div>
+        </div>`;
+    }).join("");
+
+    const sourceLabel = wx.source === "NWS" ? "NWS FIRE ISLAND" : "OPEN-METEO";
+
+    app.innerHTML = `
+      <div class="header">
+        <div>
+          <div class="loc-name"><span class="loc-dot"></span>DUNEWOOD</div>
+          <div class="loc-sub">FIRE ISLAND · NEW YORK</div>
+        </div>
+        <div class="updated">
+          Updated ${nowStr()}
+          <button class="refresh-btn" onclick="fetchAll()">↻ REFRESH</button>
+        </div>
+      </div>
+
+      <div class="sec-lbl">NOW</div>
+      <div class="grid">
+
+        <div class="card card-tide">
+          <div class="card-lbl">🌊 &nbsp;NEXT HIGH TIDE</div>
+          <div class="card-main">${tideTime}</div>
+          <div class="card-sub">${tideFt} ft &nbsp;·&nbsp; Fire Island Inlet</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">💨</div>
+          <div class="card-lbl">WIND</div>
+          <div class="card-main">${windMph} mph</div>
+          <div class="card-sub">${windDir}${gustMph ? ` · gusts ${gustMph}` : ""}</div>
+          <div class="source-tag">${sourceLabel}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🌊</div>
+          <div class="card-lbl">WAVES</div>
+          <div class="card-main">${waveHtFt} ft</div>
+          <div class="card-sub">${wavePer} · ${waveDirStr}</div>
+          <div class="source-tag">BUOY 44025</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🌡️</div>
+          <div class="card-lbl">WATER TEMP</div>
+          <div class="card-main">${waterTempF}</div>
+          <div class="card-sub">surface</div>
+          <div class="source-tag">BUOY 44025</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">☁️</div>
+          <div class="card-lbl">CLOUD COVER</div>
+          <div class="card-main">${cloudPct}%</div>
+          <div class="card-sub">${cloudLabel(cloudPct)}</div>
+          <div class="source-tag">${sourceLabel}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">🌧️</div>
+          <div class="card-lbl">PRECIP</div>
+          <div class="card-main">${precipPct}%</div>
+          <div class="card-sub">chance</div>
+          <div class="source-tag">${sourceLabel}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-icon">👁️</div>
+          <div class="card-lbl">VISIBILITY</div>
+          <div class="card-main">${visMiles} mi</div>
+          <div class="card-sub">&nbsp;</div>
+          <div class="source-tag">${sourceLabel}</div>
+        </div>
+
+      </div>
+
+      <div class="sec-lbl">REST OF DAY &nbsp;<span style="font-size:8px;opacity:0.5;letter-spacing:2px">${sourceLabel}</span></div>
+      <div class="scroll">${hourCards}</div>
+
+      <div class="footer">
+        Waves &amp; Water Temp: NOAA Buoy 44025 (20nm S of Fire Island Inlet)<br>
+        Wind · Cloud · Precip · Visibility: ${wx.source === "NWS" ? "NWS api.weather.gov — Fire Island zone" : "Open-Meteo forecast model (NWS unavailable)"}<br>
+        Tides: NOAA CO-OPS Station ${TIDE_STATION} (Fire Island Inlet) · All sources public domain
+      </div>`;
+
+  } catch(e) {
+    app.innerHTML=`<div class="status error">
+      Could not load conditions.<br>
+      <small style="font-size:11px;opacity:0.6">${e.message}</small><br><br>
+      <button onclick="fetchAll()" style="background:none;border:1px solid rgba(248,113,113,0.4);color:#f87171;font-family:inherit;font-size:11px;letter-spacing:2px;padding:8px 16px;border-radius:3px;cursor:pointer;">↻ TRY AGAIN</button>
+    </div>`;
+  }
+}
+
+fetchAll();
+setInterval(fetchAll, 10*60*1000);
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dunewood Beach · Fire Island</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b1a2e;
+    font-family: 'Courier New', Courier, monospace;
+    color: #e0f2fe;
+    min-height: 100vh;
+    padding-bottom: 40px;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid rgba(125,211,252,0.15);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .loc-name {
     font-size: 20px;
     font-weight: 900;
     letter-spacing: 4px;
